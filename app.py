@@ -1,60 +1,52 @@
-from flask import Flask, request
-from twilio.twiml.voice_response import VoiceResponse, Gather
-import openai
+from flask import Flask, request, Response
+from twilio.twiml.voice_response import VoiceResponse
+from dotenv import load_dotenv
 import os
 
-# Configurare OpenAI
-openai.api_key = os.getenv("OPEN_API_KEY")
+# Încarcă variabilele din .env
+load_dotenv()
 
 app = Flask(__name__)
 
-# Sesiuni pe baza CallSid (fiecare apel separat)
-sessions = {}
+@app.route("/")
+def index():
+    return "✅ Serverul Flask + Twilio e online."
 
 @app.route("/voice", methods=["POST"])
 def voice():
-    call_sid = request.form.get("CallSid")
-    speech_result = request.form.get("SpeechResult", "")
-    session = sessions.get(call_sid, {"step": 1})
+    """Twilio te va apela și va executa instrucțiunile de aici."""
+    resp = VoiceResponse()
+    
+    # Spune un mesaj simplu
+    resp.say("Bună! Aceasta este o rezervare automată de test.", voice='alice', language='ro-RO')
+    
+    # Așteaptă input de la utilizator (max 1 cifră)
+    resp.gather(
+        input='dtmf',
+        timeout=5,
+        num_digits=1,
+        action='/handle-key',
+        method='POST'
+    )
+    
+    return Response(str(resp), mimetype='text/xml')
 
-    response = VoiceResponse()
+@app.route("/handle-key", methods=["POST"])
+def handle_key():
+    """Gestionează inputul utilizatorului în timpul apelului"""
+    digit_pressed = request.form.get("Digits")
+    resp = VoiceResponse()
 
-    # Prima dată: întreabă
-    if session["step"] == 1:
-        gather = Gather(input="speech", action="/voice", method="POST")
-        gather.say("Salut! Pentru ce zi doriți o rezervare?")
-        response.append(gather)
-        session["step"] = 2
-
-    # După ce a vorbit clientul
-    elif session["step"] == 2 and speech_result:
-        prompt = f"Clientul a spus: {speech_result}. Răspunde frumos și întreabă pentru ce oră dorește rezervarea."
-
-        # trimitem la GPT
-        gpt_response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        reply = gpt_response.choices[0].message.content
-        gather = Gather(input="speech", action="/voice", method="POST")
-        gather.say(reply)
-        response.append(gather)
-        session["step"] = 3
-
-    # Confirmare finală
-    elif session["step"] == 3 and speech_result:
-        reply = f"Am înregistrat răspunsul dumneavoastră: {speech_result}. Vă mulțumim pentru apel!"
-        response.say(reply)
-        sessions.pop(call_sid, None)
-
+    if digit_pressed == "1":
+        resp.say("Ai ales masa de două persoane.")
+    elif digit_pressed == "2":
+        resp.say("Ai ales masa de patru persoane.")
     else:
-        response.say("Nu am înțeles. Încercați din nou mai târziu.")
-
-    sessions[call_sid] = session
-    return str(response)
+        resp.say("Opțiune necunoscută. Închidem apelul.")
+    
+    resp.hangup()
+    return Response(str(resp), mimetype='text/xml')
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-
