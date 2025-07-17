@@ -1,52 +1,40 @@
 from flask import Flask, request, Response
-from twilio.twiml.voice_response import VoiceResponse
+from twilio.twiml.voice_response import VoiceResponse, Gather
 from dotenv import load_dotenv
 import os
 
-# Încarcă variabilele din .env
-load_dotenv()
+load_dotenv()  # Încarcă variabilele din .env dacă vrei să folosești mai târziu
 
 app = Flask(__name__)
 
-@app.route("/")
-def index():
-    return "✅ Serverul Flask + Twilio e online."
+@app.route('/')
+def home():
+    return '✅ Serverul Flask + Twilio este online.'
 
-@app.route("/voice", methods=["POST"])
-def voice():
-    """Twilio te va apela și va executa instrucțiunile de aici."""
-    resp = VoiceResponse()
-    
-    # Spune un mesaj simplu
-    resp.say("Bună! Aceasta este o rezervare automată de test.", voice='alice', language='ro-RO')
-    
-    # Așteaptă input de la utilizator (max 1 cifră)
-    resp.gather(
-        input='dtmf',
-        timeout=5,
-        num_digits=1,
-        action='/handle-key',
-        method='POST'
-    )
-    
-    return Response(str(resp), mimetype='text/xml')
+@app.route('/call', methods=['POST'])
+def call():
+    response = VoiceResponse()
+    gather = Gather(num_digits=1, action='/handle-key', method='POST', timeout=5)
+    gather.say("Bun venit! Pentru a face o rezervare, apasa 1. Pentru informatii, apasa 2.", voice='alice', language='ro-RO')
+    response.append(gather)
+    response.say("Nu ai apasat nicio tasta. La revedere!", voice='alice', language='ro-RO')
+    response.hangup()
+    return Response(str(response), mimetype='application/xml')
 
-@app.route("/handle-key", methods=["POST"])
+@app.route('/handle-key', methods=['POST'])
 def handle_key():
-    """Gestionează inputul utilizatorului în timpul apelului"""
-    digit_pressed = request.form.get("Digits")
-    resp = VoiceResponse()
+    digit_pressed = request.form.get('Digits')
+    response = VoiceResponse()
 
-    if digit_pressed == "1":
-        resp.say("Ai ales masa de două persoane.")
-    elif digit_pressed == "2":
-        resp.say("Ai ales masa de patru persoane.")
+    if digit_pressed == '1':
+        response.say("Ai ales sa faci o rezervare. Te vom contacta in curand.", voice='alice', language='ro-RO')
+    elif digit_pressed == '2':
+        response.say("Programul nostru este de luni pana vineri, intre 9 si 17.", voice='alice', language='ro-RO')
     else:
-        resp.say("Opțiune necunoscută. Închidem apelul.")
-    
-    resp.hangup()
-    return Response(str(resp), mimetype='text/xml')
+        response.say("Tasta invalida. La revedere!", voice='alice', language='ro-RO')
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    response.hangup()
+    return Response(str(response), mimetype='application/xml')
+
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=10000)
